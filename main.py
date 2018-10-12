@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import json
 import numpy as np
@@ -16,7 +17,7 @@ from spatial_transforms import (
 from temporal_transforms import LoopPadding, TemporalRandomCrop
 from target_transforms import ClassLabel, VideoID
 from target_transforms import Compose as TargetCompose
-from dataset import get_training_set, get_validation_set, get_test_set
+from dataset_surgical import get_training_set, get_validation_set, get_test_set
 from utils import Logger
 from train import train_epoch
 from validation import val_epoch
@@ -26,7 +27,7 @@ if __name__ == '__main__':
     opt = parse_opts()
     if opt.root_path != '':
         opt.video_path = os.path.join(opt.root_path, opt.video_path)
-        opt.annotation_path = os.path.join(opt.root_path, opt.annotation_path)
+        #opt.annotation_path = os.path.join(opt.root_path, opt.annotation_path)
         opt.result_path = os.path.join(opt.root_path, opt.result_path)
         if opt.resume_path:
             opt.resume_path = os.path.join(opt.root_path, opt.resume_path)
@@ -46,7 +47,15 @@ if __name__ == '__main__':
 
     model, parameters = generate_model(opt)
     print(model)
+
+    # class_weight = torch.tensor([3.18450445, 0.34834707, 1.81115213,
+    #                              0.45577419, 3.7747372, 1.72608003,
+    #                              4.44822003]).cuda()
+    #
+    # criterion = nn.CrossEntropyLoss(weight=class_weight)
+
     criterion = nn.CrossEntropyLoss()
+
     if not opt.no_cuda:
         criterion = criterion.cuda()
 
@@ -82,25 +91,29 @@ if __name__ == '__main__':
             num_workers=opt.n_threads,
             pin_memory=True)
         train_logger = Logger(
-            os.path.join(opt.result_path, 'train.log'),
+            os.path.join(opt.result_path, '{}_train.log'.format(str(opt.model)+str(opt.model_depth))),
             ['epoch', 'loss', 'acc', 'lr'])
         train_batch_logger = Logger(
-            os.path.join(opt.result_path, 'train_batch.log'),
+            os.path.join(opt.result_path, '{}_train_batch.log'.format(str(opt.model)+str(opt.model_depth))),
             ['epoch', 'batch', 'iter', 'loss', 'acc', 'lr'])
 
-        if opt.nesterov:
-            dampening = 0
-        else:
-            dampening = opt.dampening
-        optimizer = optim.SGD(
-            parameters,
-            lr=opt.learning_rate,
-            momentum=opt.momentum,
-            dampening=dampening,
-            weight_decay=opt.weight_decay,
-            nesterov=opt.nesterov)
-        scheduler = lr_scheduler.ReduceLROnPlateau(
-            optimizer, 'min', patience=opt.lr_patience)
+        # if opt.nesterov:
+        #     dampening = 0
+        # else:
+        #     dampening = opt.dampening
+        # optimizer = optim.SGD(
+        #     parameters,
+        #     lr=opt.learning_rate,
+        #     momentum=opt.momentum,
+        #     dampening=dampening,
+        #     weight_decay=opt.weight_decay,
+        #     nesterov=opt.nesterov)
+        # scheduler = lr_scheduler.ReduceLROnPlateau(
+        #     optimizer, 'min', patience=opt.lr_patience)
+
+        scheduler=None
+        optimizer = optim.Adam(parameters, lr=opt.learning_rate)
+
     if not opt.no_val:
         spatial_transform = Compose([
             Scale(opt.sample_size),
@@ -113,12 +126,15 @@ if __name__ == '__main__':
             opt, spatial_transform, temporal_transform, target_transform)
         val_loader = torch.utils.data.DataLoader(
             validation_data,
-            batch_size=opt.batch_size,
+            # batch_size=opt.batch_size,
+            batch_size=10,
             shuffle=False,
             num_workers=opt.n_threads,
             pin_memory=True)
         val_logger = Logger(
-            os.path.join(opt.result_path, 'val.log'), ['epoch', 'loss', 'acc'])
+            os.path.join(opt.result_path,
+                         '{}_val.log'.format(str(opt.model)+str(opt.model_depth))),
+            ['epoch', 'loss', 'acc'])
 
     if opt.resume_path:
         print('loading checkpoint {}'.format(opt.resume_path))
@@ -131,6 +147,9 @@ if __name__ == '__main__':
             optimizer.load_state_dict(checkpoint['optimizer'])
 
     print('run')
+    best_val_loss = float('Inf')
+    patience = 5
+    wait = 0
     for i in range(opt.begin_epoch, opt.n_epochs + 1):
         if not opt.no_train:
             train_epoch(i, train_loader, model, criterion, optimizer, opt,
@@ -139,8 +158,34 @@ if __name__ == '__main__':
             validation_loss = val_epoch(i, val_loader, model, criterion, opt,
                                         val_logger)
 
+            if i % opt.checkpoint == 0:
+
+                saved_file_path = os.path.join(opt.result_path,
+                                      'save_{}_{}.pth'.format(i, str(opt.model)+str(opt.model_depth)))
+
+                if validation_loss < best_val_loss:
+                    wait = 0
+                    best_file_path = os.path.join(opt.result_path,
+                                                  'model_best_{}.pth'.format(i, str(opt.model)+str(opt.model_depth)))
+
+                    # copy the previously saved model file (during training)
+                    # as best model file
+                    if os.path.isfile(saved_file_path):
+                        print('val loss improved from {} to {}'.format(best_val_loss, validation_loss))
+                        print('saving {} as {}'.format(saved_file_path, best_file_path))
+                        shutil.copyfile(saved_file_path, best_file_path)
+                        best_val_loss = validation_loss
+                else:
+                    wait += 1
+                    if wait >= patience:
+                        # restore best weights before early stopping
+                        checkpoint = torch.load(best_file_path)
+                        model.load_state_dict(checkpoint['state_dict'])
+                        break # early stopping
+
         if not opt.no_train and not opt.no_val:
-            scheduler.step(validation_loss)
+            if scheduler is not None:
+                scheduler.step(validation_loss)
 
     if opt.test:
         spatial_transform = Compose([

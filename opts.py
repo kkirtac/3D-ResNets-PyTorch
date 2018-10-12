@@ -27,7 +27,7 @@ def parse_opts():
         '--dataset',
         default='kinetics',
         type=str,
-        help='Used dataset (activitynet | kinetics | ucf101 | hmdb51)')
+        help='Used dataset (activitynet | kinetics | ucf101 | hmdb51 | surgical)')
     parser.add_argument(
         '--n_classes',
         default=400,

@@ -181,6 +181,7 @@ def generate_model(opt):
                                             opt.n_finetune_classes)
                 model.module.fc = model.module.fc.cuda()
 
+
             parameters = get_fine_tuning_parameters(model, opt.ft_begin_index)
             return model, parameters
     else:

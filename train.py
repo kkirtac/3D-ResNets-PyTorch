@@ -27,10 +27,11 @@ def train_epoch(epoch, data_loader, model, criterion, optimizer, opt,
         inputs = Variable(inputs)
         targets = Variable(targets)
         outputs = model(inputs)
+
         loss = criterion(outputs, targets)
         acc = calculate_accuracy(outputs, targets)
 
-        losses.update(loss.data[0], inputs.size(0))
+        losses.update(loss.item(), inputs.size(0))
         accuracies.update(acc, inputs.size(0))
 
         optimizer.zero_grad()
@@ -71,7 +72,7 @@ def train_epoch(epoch, data_loader, model, criterion, optimizer, opt,
 
     if epoch % opt.checkpoint == 0:
         save_file_path = os.path.join(opt.result_path,
-                                      'save_{}.pth'.format(epoch))
+                                      'save_{}_{}.pth'.format(epoch, str(opt.model)+str(opt.model_depth)))
         states = {
             'epoch': epoch + 1,
             'arch': opt.arch,
