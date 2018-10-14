@@ -83,13 +83,20 @@ def make_dataset(root_path, phase_list, subset, idx_subset, sample_duration):
 
                 for group in consecutive_groups(df_phase['Frame']+1):
 
+                    group = list(group)[0:-1:25]
+
                     for chunk in chunked(group, sample_duration):
 
-                        if len(chunk) == sample_duration:
-                            sample_j = copy.deepcopy(sample)
-                            sample_j['frame_indices'] = chunk
-                            sample_j['label'] = class_to_idx[phase]
-                            dataset.append(sample_j)
+                        sample_j = copy.deepcopy(sample)
+                        sample_j['frame_indices'] = chunk
+                        sample_j['label'] = class_to_idx[phase]
+                        dataset.append(sample_j)
+
+                        # if len(chunk) == sample_duration:
+                        #     sample_j = copy.deepcopy(sample)
+                        #     sample_j['frame_indices'] = chunk
+                        #     sample_j['label'] = class_to_idx[phase]
+                        #     dataset.append(sample_j)
 
     return dataset
 
