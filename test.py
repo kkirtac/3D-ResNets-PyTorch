@@ -3,10 +3,9 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 import time
 import os
-import sys
 import json
 
-from utils import AverageMeter
+from utils import AverageMeter, calculate_accuracy
 
 
 def calculate_video_results(output_buffer, video_id, test_results, class_names):
@@ -29,46 +28,92 @@ def test(data_loader, model, opt, class_names):
 
     model.eval()
 
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
+    with torch.no_grad():
 
-    end_time = time.time()
-    output_buffer = []
-    previous_video_id = ''
-    test_results = {'results': {}}
-    for i, (inputs, targets) in enumerate(data_loader):
-        data_time.update(time.time() - end_time)
+        batch_time = AverageMeter()
+        data_time = AverageMeter()
 
-        inputs = Variable(inputs, volatile=True)
-        outputs = model(inputs)
-        if not opt.no_softmax_in_test:
-            outputs = F.softmax(outputs)
-
-        for j in range(outputs.size(0)):
-            if not (i == 0 and j == 0) and targets[j] != previous_video_id:
-                calculate_video_results(output_buffer, previous_video_id,
-                                        test_results, class_names)
-                output_buffer = []
-            output_buffer.append(outputs[j].data.cpu())
-            previous_video_id = targets[j]
-
-        if (i % 100) == 0:
-            with open(
-                    os.path.join(opt.result_path, '{}.json'.format(
-                        opt.test_subset)), 'w') as f:
-                json.dump(test_results, f)
-
-        batch_time.update(time.time() - end_time)
         end_time = time.time()
+        output_buffer = []
+        previous_video_id = ''
+        test_results = {'results': {}}
+        for i, (inputs, targets) in enumerate(data_loader):
+            data_time.update(time.time() - end_time)
 
-        print('[{}/{}]\t'
-              'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-              'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'.format(
-                  i + 1,
-                  len(data_loader),
-                  batch_time=batch_time,
-                  data_time=data_time))
+            #inputs = Variable(inputs, volatile=True)
+            inputs = Variable(inputs)
+            outputs = model(inputs)
+            if not opt.no_softmax_in_test:
+                outputs = F.softmax(outputs)
+
+            for j in range(outputs.size(0)):
+                if not (i == 0 and j == 0) and targets[j] != previous_video_id:
+                    calculate_video_results(output_buffer, previous_video_id,
+                                            test_results, class_names)
+                    output_buffer = []
+                output_buffer.append(outputs[j].data.cpu())
+                previous_video_id = targets[j]
+
+            if (i % 100) == 0:
+                with open(
+                        os.path.join(opt.result_path, '{}.json'.format(
+                            opt.test_subset)), 'w') as f:
+                    json.dump(test_results, f)
+
+            batch_time.update(time.time() - end_time)
+            end_time = time.time()
+
+            print('[{}/{}]\t'
+                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'.format(
+                      i + 1,
+                      len(data_loader),
+                      batch_time=batch_time,
+                      data_time=data_time))
     with open(
             os.path.join(opt.result_path, '{}.json'.format(opt.test_subset)),
             'w') as f:
         json.dump(test_results, f)
+
+
+def my_test(data_loader, model, opt, logger):
+
+    print('test')
+
+    model.eval()
+
+    with torch.no_grad():
+
+        batch_time = AverageMeter()
+        data_time = AverageMeter()
+        accuracies = AverageMeter()
+
+        end_time = time.time()
+        for i, (inputs, targets) in enumerate(data_loader):
+            data_time.update(time.time() - end_time)
+
+            if not opt.no_cuda:
+                targets = targets.cuda(async=True)
+
+            outputs = model(inputs)
+            if not opt.no_softmax_in_test:
+                outputs = F.softmax(outputs, dim=-1)
+
+            acc = calculate_accuracy(outputs, targets)
+            accuracies.update(acc, inputs.size(0))
+
+            batch_time.update(time.time() - end_time)
+            end_time = time.time()
+
+            print('Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                  'Acc {acc.val:.3f} ({acc.avg:.3f})'.format(
+                      i + 1,
+                      len(data_loader),
+                      batch_time=batch_time,
+                      data_time=data_time,
+                      acc=accuracies))
+
+    logger.log({'acc': accuracies.avg})
+
+    return accuracies.avg

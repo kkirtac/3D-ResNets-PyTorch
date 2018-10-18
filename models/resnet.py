@@ -27,8 +27,9 @@ def downsample_basic_block(x, planes, stride):
     zero_pads = torch.Tensor(
         out.size(0), planes - out.size(1), out.size(2), out.size(3),
         out.size(4)).zero_()
-    if isinstance(out.data, torch.cuda.FloatTensor):
-        zero_pads = zero_pads.cuda()
+    if torch.cuda.is_available():
+        if isinstance(out.data, torch.cuda.FloatTensor):
+            zero_pads = zero_pads.cuda()
 
     out = Variable(torch.cat([out.data, zero_pads], dim=1))
 
@@ -207,7 +208,24 @@ def get_fine_tuning_parameters(model, ft_begin_index):
                 parameters.append({'params': v})
                 break
         else:
-            parameters.append({'params': v, 'lr': 0.0})
+            if k in 'conv1.weight' or k in 'bn1.weight':
+                parameters.append({'params': v, 'lr': 1e-5})
+            elif k in 'bn1.bias':
+                parameters.append({'params': v, 'lr': 2e-5})
+            elif 'layer1' in k:
+                if 'bias' in k:
+                    parameters.append({'params': v, 'lr': 2e-5})
+                else:
+                    parameters.append({'params': v, 'lr': 1e-5})
+            else:
+                if 'bias' in k:
+                    parameters.append({'params': v, 'lr': 2e-4})
+                else:
+                    parameters.append({'params': v, 'lr': 1e-4})
+
+
+            # parameters.append({'params': v, 'lr': 0.0})
+
 
     return parameters
 

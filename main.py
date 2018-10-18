@@ -7,6 +7,7 @@ import torch
 from torch import nn
 from torch import optim
 from torch.optim import lr_scheduler
+import copy
 
 from opts import parse_opts
 from model import generate_model
@@ -56,6 +57,8 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
 
+    fps=5
+
     if not opt.no_cuda:
         criterion = criterion.cuda()
 
@@ -91,10 +94,10 @@ if __name__ == '__main__':
             num_workers=opt.n_threads,
             pin_memory=True)
         train_logger = Logger(
-            os.path.join(opt.result_path, '{}_train.log'.format(str(opt.model)+str(opt.model_depth))),
+            os.path.join(opt.result_path, '{}_{}fps_train_tunefull.log'.format(str(opt.model)+str(opt.model_depth), fps)),
             ['epoch', 'loss', 'acc', 'lr'])
         train_batch_logger = Logger(
-            os.path.join(opt.result_path, '{}_train_batch.log'.format(str(opt.model)+str(opt.model_depth))),
+            os.path.join(opt.result_path, '{}_{}fps_train_batch_tunefull.log'.format(str(opt.model)+str(opt.model_depth), fps)),
             ['epoch', 'batch', 'iter', 'loss', 'acc', 'lr'])
 
         # if opt.nesterov:
@@ -133,48 +136,59 @@ if __name__ == '__main__':
             pin_memory=True)
         val_logger = Logger(
             os.path.join(opt.result_path,
-                         '{}_val.log'.format(str(opt.model)+str(opt.model_depth))),
+                         '{}_{}fps_val_tunefull.log'.format(str(opt.model)+str(opt.model_depth), fps)),
             ['epoch', 'loss', 'acc'])
 
     if opt.resume_path:
         print('loading checkpoint {}'.format(opt.resume_path))
-        checkpoint = torch.load(opt.resume_path)
-        assert opt.arch == checkpoint['arch']
 
+        if not opt.no_cuda:
+            checkpoint = torch.load(opt.resume_path)
+            model.load_state_dict(checkpoint['state_dict'])
+        else:
+            checkpoint = torch.load(opt.resume_path, map_location='cpu')
+            from collections import OrderedDict
+            new_state_dict = OrderedDict()
+            for k, v in checkpoint['state_dict'].items():
+                name = k[7:]  # remove `module.`
+                new_state_dict[name] = v
+            model.load_state_dict(new_state_dict)
+
+        assert opt.arch == checkpoint['arch']
         opt.begin_epoch = checkpoint['epoch']
-        model.load_state_dict(checkpoint['state_dict'])
+
         if not opt.no_train:
             optimizer.load_state_dict(checkpoint['optimizer'])
 
     print('run')
-    best_val_loss = float('Inf')
-    patience = 5
+    best_val_acc = float("-inf")
+    patience = 8
     wait = 0
     for i in range(opt.begin_epoch, opt.n_epochs + 1):
         if not opt.no_train:
             train_epoch(i, train_loader, model, criterion, optimizer, opt,
                         train_logger, train_batch_logger)
         if not opt.no_val:
-            validation_loss = val_epoch(i, val_loader, model, criterion, opt,
+            validation_loss, validation_acc = val_epoch(i, val_loader, model, criterion, opt,
                                         val_logger)
 
             if i % opt.checkpoint == 0:
 
                 saved_file_path = os.path.join(opt.result_path,
-                                      'save_{}_{}.pth'.format(i, str(opt.model)+str(opt.model_depth)))
+                                      'save_{}_{}_{}fps_tunefull.pth'.format(i, str(opt.model)+str(opt.model_depth), fps))
 
-                if validation_loss < best_val_loss:
+                if validation_acc > best_val_acc:
                     wait = 0
                     best_file_path = os.path.join(opt.result_path,
-                                                  'model_best_{}.pth'.format(i, str(opt.model)+str(opt.model_depth)))
+                                                  'model_best_{}_{}_{}fps_tunefull.pth'.format(i, str(opt.model)+str(opt.model_depth), fps))
 
                     # copy the previously saved model file (during training)
                     # as best model file
                     if os.path.isfile(saved_file_path):
-                        print('val loss improved from {} to {}'.format(best_val_loss, validation_loss))
+                        print('val acc improved from {} to {}'.format(best_val_acc, validation_acc))
                         print('saving {} as {}'.format(saved_file_path, best_file_path))
                         shutil.copyfile(saved_file_path, best_file_path)
-                        best_val_loss = validation_loss
+                        best_val_acc = validation_acc
                 else:
                     wait += 1
                     if wait >= patience:
@@ -194,7 +208,8 @@ if __name__ == '__main__':
             ToTensor(opt.norm_value), norm_method
         ])
         temporal_transform = LoopPadding(opt.sample_duration)
-        target_transform = VideoID()
+        # target_transform = VideoID()
+        target_transform = ClassLabel()
 
         test_data = get_test_set(opt, spatial_transform, temporal_transform,
                                  target_transform)
@@ -204,4 +219,12 @@ if __name__ == '__main__':
             shuffle=False,
             num_workers=opt.n_threads,
             pin_memory=True)
-        test.test(test_loader, model, opt, test_data.class_names)
+
+        test_logger = Logger(
+            os.path.join(opt.result_path,
+                         '{}_{}fps_test_tunefull.log'.format(str(opt.model)+str(opt.model_depth), fps)),
+            ['acc'])
+
+        # test.test(test_loader, model, opt, test_data.class_names)
+        avg_acc = test.my_test(test_loader, model, opt,test_logger)
+        print('avg accuracy on test set {}'.format(avg_acc))

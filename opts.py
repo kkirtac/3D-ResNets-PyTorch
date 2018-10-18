@@ -227,6 +227,11 @@ def parse_opts():
         help='ResNeXt cardinality')
     parser.add_argument(
         '--manual_seed', default=1, type=int, help='Manually set random seed')
+    parser.add_argument(
+        '--predict_result_name',
+        default='predictions.csv',
+        type=str,
+        help='Predictions ')
 
     args = parser.parse_args()
 

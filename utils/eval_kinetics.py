@@ -44,11 +44,11 @@ class KINETICSclassification(object):
         self.prediction = self._import_prediction(prediction_filename)
 
         if self.verbose:
-            print '[INIT] Loaded annotations from {} subset.'.format(subset)
+            print('[INIT] Loaded annotations from {} subset.'.format(subset))
             nr_gt = len(self.ground_truth)
-            print '\tNumber of ground truth instances: {}'.format(nr_gt)
+            print('\tNumber of ground truth instances: {}'.format(nr_gt))
             nr_pred = len(self.prediction)
-            print '\tNumber of predictions: {}'.format(nr_pred)
+            print('\tNumber of predictions: {}'.format(nr_pred))
 
     def _import_ground_truth(self, ground_truth_filename):
         """Reads ground truth file, checks if it is well formatted, and returns
@@ -139,7 +139,7 @@ class KINETICSclassification(object):
             print ('[RESULTS] Performance on ActivityNet untrimmed video '
                    'classification task.')
             # print '\tMean Average Precision: {}'.format(ap.mean())
-            print '\tError@{}: {}'.format(self.top_k, 1.0 - hit_at_k)
+            print('\tError@{}: {}'.format(self.top_k, 1.0 - hit_at_k))
             #print '\tAvg Hit@{}: {}'.format(self.top_k, avg_hit_at_k)
         # self.ap = ap
         self.hit_at_k = hit_at_k

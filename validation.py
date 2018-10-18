@@ -51,4 +51,4 @@ def val_epoch(epoch, data_loader, model, criterion, opt, logger):
 
     logger.log({'epoch': epoch, 'loss': losses.avg, 'acc': accuracies.avg})
 
-    return losses.avg
+    return losses.avg, accuracies.avg

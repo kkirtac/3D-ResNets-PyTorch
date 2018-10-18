@@ -83,7 +83,7 @@ def make_dataset(root_path, phase_list, subset, idx_subset, sample_duration):
 
                 for group in consecutive_groups(df_phase['Frame']+1):
 
-                    group = list(group)[0:-1:25]
+                    # group = list(group)[0:-1:5]
 
                     for chunk in chunked(group, sample_duration):
 
@@ -143,6 +143,7 @@ class SurgicalDataset(data.Dataset):
             idx_subset=[66, 8, 70, 4, 21, 64, 16, 9]
         elif subset in ['testing']:
             idx_subset=[77, 5, 13, 54, 55, 33, 60, 11]
+            # idx_subset=[54]
         else:
             print('Missing subset name. '
                   'Error initiliazing the object.')
@@ -155,6 +156,7 @@ class SurgicalDataset(data.Dataset):
         self.temporal_transform = temporal_transform
         self.target_transform = target_transform
         self.loader = get_loader()
+        self.class_names = phase_list
 
     def __getitem__(self, index):
         """
